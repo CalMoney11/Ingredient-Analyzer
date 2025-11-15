@@ -51,7 +51,7 @@ function displayFileName(input) {
 }
 
 /**
- * Main function to trigger recipe generation.
+ * Main function to trigger recipe generation via the Flask backend.
  */
 async function getRecipes() {
     const prompt = document.getElementById('foodPrompt').value.trim();
@@ -68,114 +68,64 @@ async function getRecipes() {
 
     // 1. Set Loading State
     button.disabled = true;
-    buttonText.innerHTML = 'Generating <span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>';
-    outputDiv.innerHTML = '<div class="text-center py-8 text-blue-600"><p class="text-lg font-medium">Analyzing ingredients and searching for recipes...</p></div>';
+    buttonText.innerHTML = 'Analyzing <span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>';
+    outputDiv.innerHTML = '<div class="text-center py-8 text-blue-600"><p class="text-lg font-medium">Analyzing ingredients with AI...</p></div>';
 
-
-    let base64Image = null;
+    // 2. Prepare FormData for the Flask backend
+    const formData = new FormData();
     if (imageFile) {
-        try {
-            base64Image = await fileToBase64(imageFile);
-        } catch (e) {
-            outputDiv.innerHTML = '<p class="text-red-600 font-medium">Error reading image file. Please try again.</p>';
-            button.disabled = false;
-            buttonText.textContent = 'Get Recipes';
-            return;
-        }
+        formData.append('image', imageFile);
+    }
+    if (prompt) {
+        formData.append('prompt', prompt);
     }
 
-    // 2. Construct the Gemini API Payload
-    const apiKey = ""; // Canvas will provide this key at runtime
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+    // 3. Determine the API endpoint (local for dev, deployed URL for production)
+    // Change this to your deployed URL when going to production (e.g., https://your-app.onrender.com/analyze)
+    const apiUrl = 'https://calmoney11.github.io/Ingredient-Analyzer/';
 
-    const systemPrompt = "You are a world-class chef and food analyst. Analyze the user's input (image of ingredients and/or text prompt) and provide exactly three distinct, easy-to-follow recipes. Format the response strictly using Markdown with section headings and bullet points for ingredients and steps. Do not include any introductory or concluding text, only the recipes.";
-    
-    const userQuery = `Generate three recipes using the following ingredients/desires: ${prompt || "Ingredients found in the photo."}`;
-
-    const contents = [];
-    
-    // Add image part if available
-    if (base64Image) {
-         contents.push({
-            role: "user",
-            parts: [
-                { text: userQuery },
-                {
-                    inlineData: {
-                        mimeType: imageFile.type,
-                        data: base64Image
-                    }
-                }
-            ]
-        });
-    } else {
-         contents.push({ parts: [{ text: userQuery }] });
-    }
-
-
-    const payload = {
-        contents: contents,
-        // Use Google Search grounding to ensure recipes are practical and up-to-date
-        tools: [{ "google_search": {} }], 
-        systemInstruction: {
-            parts: [{ text: systemPrompt }]
-        },
-    };
-
-    // 3. Perform the simulated/actual Fetch call
-    let responseText = "";
-    let sources = [];
-    
     try {
-        // --- Start Real Fetch ---
-        const response = await withExponentialBackoff(() => 
+        // --- Fetch from Flask Backend ---
+        const response = await withExponentialBackoff(() =>
             fetch(apiUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: formData
             })
         );
-        
+
         if (!response.ok) {
-            throw new Error(`API call failed: ${response.statusText}`);
+            throw new Error(`Backend call failed: ${response.statusText}`);
         }
 
         const result = await response.json();
-        const candidate = result.candidates?.[0];
 
-        if (candidate && candidate.content?.parts?.[0]?.text) {
-            responseText = candidate.content.parts[0].text;
+        if (result.success && result.data) {
+            // Extract the analysis from the backend response
+            let responseText = "";
             
-            // Extract grounding sources
-            const groundingMetadata = candidate.groundingMetadata;
-            if (groundingMetadata && groundingMetadata.groundingAttributions) {
-                sources = groundingMetadata.groundingAttributions
-                    .map(attribution => ({
-                        uri: attribution.web?.uri,
-                        title: attribution.web?.title,
-                    }))
-                    .filter(source => source.uri && source.title);
+            // Check what data the analyzer returned
+            if (result.data.prompt_analysis && result.data.prompt_analysis.analysis) {
+                responseText = result.data.prompt_analysis.analysis;
+            } else if (result.data.image_analysis && result.data.image_analysis.analysis) {
+                responseText = result.data.image_analysis.analysis;
+            } else {
+                // Fallback: show all returned data as formatted text
+                responseText = `<pre>${JSON.stringify(result.data, null, 2)}</pre>`;
             }
-        } else {
-            // Fallback to mock data if API fails to provide content (e.g., content block)
-            responseText = generateMockRecipes(prompt);
-        }
-        // --- End Real Fetch ---
 
-        // 4. Display Results
-        outputDiv.innerHTML = `
-            <div class="prose max-w-none">
-                ${markdownToHtml(responseText)}
-            </div>
-        `;
-        
-        if (sources.length > 0) {
-            displaySources(sources);
+            // 4. Display Results
+            outputDiv.innerHTML = `
+                <div class="prose max-w-none">
+                    ${markdownToHtml(responseText)}
+                </div>
+            `;
+        } else {
+            throw new Error(result.error || 'Unknown error from backend');
         }
 
     } catch (error) {
-        console.error("Recipe generation failed:", error);
-        outputDiv.innerHTML = `<p class="text-red-600 font-medium">Sorry, an error occurred while fetching recipes: ${error.message}. Please try again.</p>`;
+        console.error("Analysis failed:", error);
+        outputDiv.innerHTML = `<p class="text-red-600 font-medium">Sorry, an error occurred: ${error.message}. Please try again.</p>`;
     } finally {
         // 5. Reset Loading State
         button.disabled = false;
