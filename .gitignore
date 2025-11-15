@@ -126,3 +126,6 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Uploaded files
+uploads/
