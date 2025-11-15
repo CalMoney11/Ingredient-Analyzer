@@ -81,8 +81,9 @@ async function getRecipes() {
     }
 
     // 3. Determine the API endpoint (local for dev, deployed URL for production)
-    // Change this to your deployed URL when going to production (e.g., https://your-app.onrender.com/analyze)
-    const apiUrl = 'https://calmoney11.github.io/Ingredient-Analyzer/';
+    // For LOCAL TESTING: use http://localhost:5000/analyze
+    // For PRODUCTION: change to your deployed URL (e.g., https://your-app.onrender.com/analyze)
+    const apiUrl = 'http://localhost:5000/analyze';
 
     try {
         // --- Fetch from Flask Backend ---

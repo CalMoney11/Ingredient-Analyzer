@@ -16,7 +16,8 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-app = Flask(__name__, static_folder=BASE_DIR)
+# Configure Flask to serve static files from the project root
+app = Flask(__name__, static_folder=BASE_DIR, static_url_path='')
 CORS(app)
 
 analyzer = IngredientAnalyzer()
