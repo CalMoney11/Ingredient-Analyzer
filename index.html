@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three Buttons Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            min-height: 40px;
+            width: 300px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Three Buttons Example</h2>
+
+    <button id="btn1">Button 1</button>
+    <button id="btn2">Button 2</button>
+    <button id="btn3">Button 3</button>
+
+    <div id="output">Text will appear here...</div>
+
+    <script>
+        const output = document.getElementById("output");
+
+        document.getElementById("btn1").addEventListener("click", () => {
+            output.textContent = "You clicked Button 1!";
+        });
+        document.getElementById("btn2").addEventListener("click", () => {
+            output.textContent = "Button 2 was clicked!";
+        });
+        document.getElementById("btn3").addEventListener("click", () => {
+            output.textContent = "Button 3 clicked!";
+        });
+    </script>
+
+</body>
+</html>
