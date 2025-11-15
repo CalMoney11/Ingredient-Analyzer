@@ -67,17 +67,28 @@ async function getRecipes() {
     buttonText.innerHTML = 'Analyzing<span class="loading-dot">.</span><span class="loading-dot">.</span><span class="loading-dot">.</span>';
     outputDiv.innerHTML = '<div class="text-center py-8"><p class="text-lg text-blue-600">🔍 Analyzing ingredients...</p></div>';
 
-    try {
-        // Prepare form data
-        const formData = new FormData();
-        if (imageFile) formData.append('image', imageFile);
-        if (prompt) formData.append('prompt', prompt);
+    // 2. Prepare FormData for the Flask backend
+    const formData = new FormData();
+    if (imageFile) {
+        formData.append('image', imageFile);
+    }
+    if (prompt) {
+        formData.append('prompt', prompt);
+    }
 
-        // Make API call
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            body: formData
-        });
+    // 3. Determine the API endpoint (local for dev, deployed URL for production)
+    // For LOCAL TESTING: use http://localhost:5000/analyze
+    // For PRODUCTION: change to your deployed URL (e.g., https://your-app.onrender.com/analyze)
+    const apiUrl = 'http://localhost:5000/analyze';
+
+    try {
+        // --- Fetch from Flask Backend ---
+        const response = await withExponentialBackoff(() =>
+            fetch(apiUrl, {
+                method: 'POST',
+                body: formData
+            })
+        );
 
         if (!response.ok) {
             throw new Error(`Server error: ${response.status} ${response.statusText}`);
