@@ -7,6 +7,8 @@ from typing import Optional
 import google.generativeai as genai
 from config import GEMINI_API_KEY, GEMINI_MODEL
 import json
+import mimetypes
+import traceback
 
 
 class IngredientAnalyzer:
@@ -33,15 +35,34 @@ class IngredientAnalyzer:
             List of ingredient names as strings
         """
         try:
-            # Upload image file
-            image_file = genai.upload_file(image_path)
+            # Validate image file exists and detect mime type
+            if not image_path or not isinstance(image_path, str):
+                return []
+
+            mime_type, _ = mimetypes.guess_type(image_path)
+            if not mime_type or not mime_type.startswith("image/"):
+                # Fallback: assume jpeg if unknown
+                mime_type = "image/jpeg"
+
+            # Upload image file explicitly in binary mode to avoid text decoding issues
+            try:
+                with open(image_path, "rb") as f:
+                    image_file = genai.upload_file(f, mime_type=mime_type)
+            except UnicodeDecodeError as ude:
+                print(f"UnicodeDecodeError while reading image as binary: {ude}")
+                return []
+            except Exception as upl_err:
+                print(f"Image upload error: {upl_err}")
+                traceback.print_exc()
+                return []
             
             # Create prompt for ingredient analysis - request JSON array
-            prompt = """Analyze this image and identify all visible ingredients or food items. 
-            Return ONLY a JSON array of ingredient names, like this:
-            ["ingredient1", "ingredient2", "ingredient3"]
-            
-            Do not include any other text, explanations, or formatting. Just the JSON array of ingredient names."""
+            prompt = (
+                "Identify every visible ingredient or food item in the photo. "
+                "Return STRICTLY a JSON array of ingredient name strings. Example:\n"
+                "[\"tomato\", \"basil\", \"olive oil\"]\n"
+                "No extra keys, no explanations, no markdown, no code fences — ONLY the JSON array."
+            )
             
             # Generate response
             response = self.vision_model.generate_content([prompt, image_file])
@@ -51,11 +72,15 @@ class IngredientAnalyzer:
                 ingredients_list = json.loads(response.text.strip())
                 return ingredients_list if isinstance(ingredients_list, list) else []
             except json.JSONDecodeError:
-                # Fallback: return empty list if parsing fails
-                print(f"Warning: Could not parse JSON from image analysis. Raw response: {response.text}")
+                print(f"Warning: Could not parse JSON from image analysis. Raw response: {getattr(response, 'text', '')}")
                 return []
+        except UnicodeDecodeError as e:
+            print(f"Unicode decode error during image analysis: {e}")
+            traceback.print_exc()
+            return []
         except Exception as e:
-            print(f"Error analyzing image: {str(e)}")
+            print(f"Error analyzing image: {e}")
+            traceback.print_exc()
             return []
 
     def analyze_prompt(self, prompt: str) -> list:
@@ -92,39 +117,24 @@ class IngredientAnalyzer:
             return []
 
     def analyze(self, image_path: Optional[str] = None, prompt: Optional[str] = None) -> list:
-        """
-        Analyze ingredients from either an image or prompt.
-
-        Args:
-            image_path: Optional path to an image file
-            prompt: Optional text prompt
-
-        Returns:
-            Combined list of all detected ingredients (deduplicated)
-        """
-        all_ingredients = []
-
+        """Analyze ingredients. Primary path: image; fallback: prompt if provided and no image."""
         if image_path:
-            image_ingredients = self.analyze_image(image_path)
-            all_ingredients.extend(image_ingredients)
+            ingredients = self.analyze_image(image_path)
+        elif prompt:
+            ingredients = self.analyze_prompt(prompt)
+        else:
+            ingredients = []
 
-        if prompt:
-            prompt_ingredients = self.analyze_prompt(prompt)
-            all_ingredients.extend(prompt_ingredients)
-
-        # Remove duplicates while preserving order
+        # Deduplicate preserving order
         seen = set()
-        unique_ingredients = []
-        for ingredient in all_ingredients:
-            ingredient_lower = ingredient.lower()
-            if ingredient_lower not in seen:
-                seen.add(ingredient_lower)
-                unique_ingredients.append(ingredient)
-
-        # Store the ingredients for later use
-        self.ingredients_list = unique_ingredients
-
-        return unique_ingredients
+        ordered = []
+        for ing in ingredients:
+            k = ing.strip().lower()
+            if k and k not in seen:
+                seen.add(k)
+                ordered.append(ing.strip())
+        self.ingredients_list = ordered
+        return ordered
     
     def get_stored_ingredients(self) -> list:
         """

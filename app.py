@@ -19,7 +19,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Configure Flask to serve static files from the project root
 app = Flask(__name__, static_folder=BASE_DIR, static_url_path='')
-CORS(app)
+# Allow all origins during development; tighten for production as needed.
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 analyzer = IngredientAnalyzer()
 
@@ -32,14 +33,10 @@ def index():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    """
-    Accepts multipart form-data with optional `image` file and optional `prompt` text.
-    Saves the uploaded image to `uploads/`, calls `IngredientAnalyzer.analyze`,
-    and returns the analysis result as JSON.
-    """
+    """Analyze an uploaded image (or optional text) and return ingredient list."""
     try:
-        image = request.files.get("image")
-        prompt = request.form.get("prompt", "")
+        image = request.files.get("image")  # Image is primary
+        prompt = request.form.get("prompt", "").strip()  # Optional fallback
 
         image_path = None
         if image and image.filename:
@@ -48,20 +45,22 @@ def analyze():
             image_path = os.path.join(UPLOAD_DIR, unique_name)
             image.save(image_path)
 
-        # Call the analyzer (now returns a list of ingredients)
-        ingredients_list = analyzer.analyze(image_path=image_path, prompt=prompt)
+        ingredients_list = analyzer.analyze(image_path=image_path, prompt=prompt if not image_path else None)
 
-        # Remove the temporary file after analysis to avoid storage buildup
+        # Cleanup temp file
         if image_path and os.path.exists(image_path):
             try:
                 os.remove(image_path)
             except Exception:
-                # Don't fail the request if cleanup fails
                 pass
 
-        return jsonify({"success": True, "ingredients": ingredients_list})
+        return jsonify({
+            "success": True,
+            "count": len(ingredients_list),
+            "ingredients": ingredients_list
+        })
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": f"Analysis failed: {e}"}), 500
 
 
 # Note: Serving uploaded files publicly is disabled in production for security.
@@ -76,20 +75,27 @@ def get_recipes():
     Calls the recipe generation function from i-to-rec3.py
     """
     try:
-        # Get the stored ingredients from the analyzer
         ingredients = analyzer.get_stored_ingredients()
-        
         if not ingredients:
             return jsonify({"success": False, "error": "No ingredients found. Please analyze ingredients first."}), 400
-        
-        # Load recipes from Kaggle
+
         print("Loading recipes from Kaggle...")
-        df = load_recipes_from_kaggle()
-        
-        # Find valid recipes based on ingredients
+        try:
+            df = load_recipes_from_kaggle()
+        except UnicodeDecodeError as ude:
+            # Provide clearer guidance for encoding issues
+            msg = (
+                "Recipe dataset encoding error. This usually means the CSV contains non UTF-8 characters. "
+                "We attempted fallback encodings (utf-8, utf-8-sig, latin-1) and all failed. "
+                f"Detail: {ude}"
+            )
+            return jsonify({"success": False, "error": msg}), 500
+        except Exception as load_err:
+            return jsonify({"success": False, "error": f"Failed to load recipes: {load_err}"}), 500
+
         print(f"Finding recipes matching {len(ingredients)} ingredients...")
         valid_recipes = find_valid_recipes(df, ingredients)
-        
+
         if not valid_recipes:
             return jsonify({
                 "success": True,
@@ -98,27 +104,37 @@ def get_recipes():
                 "total_found": 0,
                 "message": "No recipes found matching your ingredients."
             })
-        
+
         print(f"Found {len(valid_recipes)} matching recipes. Filtering to top 5...")
-        
-        # Use Gemini to filter top 5 recipes
         top_recipes = analyzer.filter_top_recipes(ingredients, valid_recipes, top_n=5)
-        
+
         return jsonify({
             "success": True,
             "ingredients": ingredients,
             "recipes": top_recipes,
             "total_found": len(valid_recipes)
         })
-        
     except Exception as e:
-        print(f"Error in get_recipes: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        print(f"Unhandled error in get_recipes: {e}")
+        return jsonify({"success": False, "error": f"Unexpected server error: {e}"}), 500
 
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "ok"})
+
+# --- Compatibility API prefix routes (for existing frontend expecting /api/*) ---
+@app.route('/api/health', methods=['GET'])
+def api_health():
+    return health()
+
+@app.route('/api/analyze', methods=['POST'])
+def api_analyze():
+    return analyze()
+
+@app.route('/api/get_recipes', methods=['POST'])
+def api_get_recipes():
+    return get_recipes()
 
 
 if __name__ == "__main__":

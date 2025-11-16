@@ -1,6 +1,10 @@
 import os
 import ast
 import pandas as pd
+from typing import Optional
+
+# Cache for loaded recipes to avoid re-reading & redownloading each request
+_RECIPES_DF: Optional[pd.DataFrame] = None
 
 # -----------------------------
 #  KAGGLE CONFIG & AUTH
@@ -24,27 +28,51 @@ import kaggle
 #  DOWNLOAD + LOAD DATASET
 # -----------------------------
 def load_recipes_from_kaggle():
+    """Download (if needed) and load recipes.csv with robust encoding fallback.
+    Uses a module-level cache to prevent repeated heavy work per request.
+    """
+    global _RECIPES_DF
+    if _RECIPES_DF is not None:
+        return _RECIPES_DF
+
     os.makedirs("data", exist_ok=True)
-
-    print("Downloading dataset from Kaggle...")
-    kaggle.api.dataset_download_files(
-        "irkaal/foodcom-recipes-and-reviews",
-        path="data",
-        unzip=True
-    )
-    print("Download complete!")
-
-    # The dataset contains multiple files. We want recipes.csv
     recipes_path = os.path.join("data", "recipes.csv")
+
+    if not os.path.exists(recipes_path):
+        print("Downloading dataset from Kaggle (first time)...")
+        kaggle.api.dataset_download_files(
+            "irkaal/foodcom-recipes-and-reviews",
+            path="data",
+            unzip=True
+        )
+        print("Download complete!")
+    else:
+        print("Using existing downloaded dataset.")
 
     if not os.path.exists(recipes_path):
         raise FileNotFoundError("recipes.csv not found in downloaded dataset.")
 
-    print("Loading recipes.csv into memory...")
-    df = pd.read_csv(recipes_path)
+    print("Loading recipes.csv with encoding fallback...")
+    encodings = ["utf-8", "utf-8-sig", "latin-1"]
+    last_error = None
+    for enc in encodings:
+        try:
+            df = pd.read_csv(recipes_path, encoding=enc)
+            print(f"Loaded recipes.csv using encoding: {enc} ({len(df)} rows)")
+            _RECIPES_DF = df
+            return df
+        except UnicodeDecodeError as e:
+            last_error = e
+            print(f"Encoding '{enc}' failed: {e}; trying next fallback...")
+        except Exception as e:
+            last_error = e
+            print(f"Unexpected error with encoding '{enc}': {e}; trying next fallback...")
 
-    print(f"Loaded {len(df)} total recipes.")
-    return df
+    # If we reach here all encodings failed
+    raise UnicodeDecodeError(
+        "recipes.csv", b"", 0, 1,
+        f"Could not decode recipes.csv with tried encodings {encodings}. Last error: {last_error}"
+    )
 
 
 # -----------------------------
