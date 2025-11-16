@@ -325,7 +325,18 @@ async function generateAiRecipes() {
     const outputDiv = document.getElementById('recipeContent');
     outputDiv.insertAdjacentHTML('beforeend', '<p id="recipeLoading" class="text-blue-600 mt-2">Generating recipes...</p>');
     try {
-        const resp = await fetch(`${API_URL.replace('/analyze','')}/generate_recipes`, { method: 'POST' });
+        // Get user text input for preferences
+        const userText = document.getElementById('foodPrompt').value.trim();
+        
+        const resp = await fetch(`${API_URL.replace('/analyze','')}/generate_recipes`, { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                preferences: userText 
+            })
+        });
         if (!resp.ok) {
             const errData = await resp.json().catch(()=>({}));
             const msg = errData.error || `HTTP ${resp.status}`;
@@ -339,20 +350,50 @@ async function generateAiRecipes() {
         const recipesHTML = data.recipes.map(r => {
             const ing = (r.ingredients||[]).map(i=>`<li class='text-sm'>${i}</li>`).join('');
             const steps = (r.steps||[]).map(s=>`<li class='text-sm'>${s}</li>`).join('');
+            
+            // Format nutrition info if available
+            let nutritionHTML = '';
+            if (r.nutrition) {
+                const n = r.nutrition;
+                nutritionHTML = `
+                    <div class='mt-3 pt-3 border-t border-gray-200'>
+                        <h5 class='font-medium text-gray-700 mb-2'>Nutrition (${n.portion_size || '1 serving'}):</h5>
+                        <div class='flex flex-wrap gap-3 text-xs'>
+                            <span class='bg-blue-50 px-3 py-1 rounded'>
+                                <span class='font-semibold text-blue-700'>${n.calories || 0}</span> <span class='text-gray-600'>cal</span>
+                            </span>
+                            <span class='bg-green-50 px-3 py-1 rounded'>
+                                <span class='font-semibold text-green-700'>${n.protein || 0}g</span> <span class='text-gray-600'>protein</span>
+                            </span>
+                            <span class='bg-yellow-50 px-3 py-1 rounded'>
+                                <span class='font-semibold text-yellow-700'>${n.fat || 0}g</span> <span class='text-gray-600'>fat</span>
+                            </span>
+                            <span class='bg-purple-50 px-3 py-1 rounded'>
+                                <span class='font-semibold text-purple-700'>${n.carbs || 0}g</span> <span class='text-gray-600'>carbs</span>
+                            </span>
+                            <span class='bg-pink-50 px-3 py-1 rounded'>
+                                <span class='font-semibold text-pink-700'>${n.sugar || 0}g</span> <span class='text-gray-600'>sugar</span>
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }
+            
             return `
                 <div class='border border-gray-200 rounded-lg p-4 bg-white shadow-sm'>
-                    <h4 class='text-lg font-semibold text-green-700 mb-2'>${r.name}</h4>
+                    <h4 class='text-2xl font-bold text-green-700 mb-3'>${r.name}</h4>
                     <h5 class='font-medium text-gray-700'>Ingredients:</h5>
                     <ul class='list-disc ml-5 mb-3 space-y-1'>${ing}</ul>
                     <h5 class='font-medium text-gray-700'>Steps:</h5>
-                    <ol class='list-decimal ml-5 space-y-1'>${steps}</ol>
+                    <ol class='list-decimal ml-5 mb-3 space-y-1'>${steps}</ol>
+                    ${nutritionHTML}
                 </div>
             `;
         }).join('');
         const existing = document.getElementById('aiRecipesBlock');
         if (existing) existing.remove();
         outputDiv.insertAdjacentHTML('beforeend', `
-            <div id='aiRecipesBlock' class='mt-6 space-y-4'>
+            <div id='aiRecipesBlock' class='mt-6 space-y-6'>
                 <h3 class='text-xl font-semibold text-gray-800'>AI Generated Recipes (${data.recipes.length}):</h3>
                 ${recipesHTML}
             </div>

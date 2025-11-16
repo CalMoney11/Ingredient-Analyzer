@@ -158,7 +158,17 @@ def generate_recipes():
         ingredients = analyzer.get_stored_ingredients()
         if not ingredients:
             return jsonify({"success": False, "error": "No ingredients available. Analyze an image or prompt first."}), 400
-        recipes = analyzer.generate_recipes(ingredients, count=5)
+        
+        # Get optional user preferences from request body
+        user_preferences = ""
+        if request.is_json:
+            data = request.get_json()
+            user_preferences = data.get('preferences', '')
+        elif request.form:
+            user_preferences = request.form.get('preferences', '')
+        
+        print(f"🍳 Generating recipes with preferences: {user_preferences[:100] if user_preferences else 'None'}")
+        recipes = analyzer.generate_recipes(ingredients, count=5, user_preferences=user_preferences)
         if not recipes:
             return jsonify({
                 "success": False,

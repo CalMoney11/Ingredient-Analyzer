@@ -226,19 +226,45 @@ Return ONLY the JSON array of indices, no other text. Example: [0, 3, 5, 7, 9]""
             print(f"Recipe filtering error: {e}. Returning first {top_n} recipes.")
             return recipes[:top_n]
 
-    def generate_recipes(self, ingredients: list, count: int = 5) -> list:
+    def generate_recipes(self, ingredients: list, count: int = 5, user_preferences: str = "") -> list:
         """Generate recipes using Gemini given the detected ingredients.
+
+        Args:
+            ingredients: List of available ingredients
+            count: Number of recipes to generate
+            user_preferences: Optional user text for dietary restrictions, cuisine type, etc.
 
         Returns a list of recipe dicts: { name: str, ingredients: [str], steps: [str] }.
         """
         if not ingredients:
             return []
         try:
+            # Build base prompt with ingredients
             base_prompt = (
                 "You are a recipe generator. Using SOME OR ALL of these ingredients: "
                 f"{', '.join(ingredients)}. Create {count} distinct recipes. "
-                "RETURN STRICT JSON ONLY: an array of objects, each with keys: name (string), ingredients (array of ingredient strings), steps (array of short imperative step strings). Example: \n"
-                "[ {\"name\": \"Tomato Basil Pasta\", \"ingredients\": [\"tomato\", \"basil\", \"olive oil\"], \"steps\": [\"Boil pasta\", \"Saute tomatoes\"] } ] \n"
+            )
+            
+            # Add user preferences if provided
+            if user_preferences and user_preferences.strip():
+                base_prompt += f"\n\nUser preferences/requirements: {user_preferences.strip()}\n"
+            
+            base_prompt += (
+                "RETURN STRICT JSON ONLY: an array of objects, each with keys: \n"
+                "- name (string): recipe name\n"
+                "- ingredients (array of strings): ingredient list (keep concise)\n"
+                "- steps (array of strings): cooking steps - write clear, well-spaced instructions with proper formatting\n"
+                "- nutrition (object): {\n"
+                "    portion_size: string (e.g. \"1 serving\", \"2 cups\"),\n"
+                "    calories: number (total kcal per portion),\n"
+                "    protein: number (grams),\n"
+                "    fat: number (grams),\n"
+                "    carbs: number (grams),\n"
+                "    sugar: number (grams)\n"
+                "  }\n\n"
+                "IMPORTANT: Make each recipe visually distinct. Keep steps clear and well-organized.\n\n"
+                "Example: \n"
+                "[ {\"name\": \"Tomato Basil Pasta\", \"ingredients\": [\"tomato\", \"basil\", \"olive oil\"], \"steps\": [\"Boil pasta in salted water for 8-10 minutes\", \"Saute tomatoes with olive oil until soft\", \"Combine pasta with tomatoes and add fresh basil\"], \"nutrition\": {\"portion_size\": \"1 serving\", \"calories\": 350, \"protein\": 12, \"fat\": 8, \"carbs\": 58, \"sugar\": 6} } ] \n\n"
                 "NO markdown, NO commentary, NO code fences, NO numbering outside JSON."
             )
 
@@ -262,10 +288,33 @@ Return ONLY the JSON array of indices, no other text. Example: [0, 3, 5, 7, 9]""
                             steps_list = [str(s).strip() for s in r.get('steps', []) if str(s).strip()]
                             if not name or (not ing_list and not steps_list):
                                 continue
+                            
+                            # Extract nutrition info if available
+                            nutrition = r.get('nutrition', {})
+                            if isinstance(nutrition, dict):
+                                nutrition_clean = {
+                                    'portion_size': str(nutrition.get('portion_size', '1 serving')),
+                                    'calories': int(nutrition.get('calories', 0)),
+                                    'protein': int(nutrition.get('protein', 0)),
+                                    'fat': int(nutrition.get('fat', 0)),
+                                    'carbs': int(nutrition.get('carbs', 0)),
+                                    'sugar': int(nutrition.get('sugar', 0))
+                                }
+                            else:
+                                nutrition_clean = {
+                                    'portion_size': '1 serving',
+                                    'calories': 0,
+                                    'protein': 0,
+                                    'fat': 0,
+                                    'carbs': 0,
+                                    'sugar': 0
+                                }
+                            
                             cleaned.append({
                                 'name': name,
                                 'ingredients': ing_list,
-                                'steps': steps_list
+                                'steps': steps_list,
+                                'nutrition': nutrition_clean
                             })
                         if cleaned:
                             return cleaned
@@ -287,7 +336,15 @@ Return ONLY the JSON array of indices, no other text. Example: [0, 3, 5, 7, 9]""
                         'Season to taste',
                         'Cook appropriately (bake/saute/boil)',
                         'Plate and serve'
-                    ]
+                    ],
+                    'nutrition': {
+                        'portion_size': '1 serving',
+                        'calories': 300,
+                        'protein': 10,
+                        'fat': 8,
+                        'carbs': 45,
+                        'sugar': 5
+                    }
                 })
             return fallback
         except Exception as e:
