@@ -302,4 +302,4 @@ document.addEventListener("DOMContentLoaded", () => {
       const newTheme = currentTheme === "dark" ? "light" : "dark";
       applyTheme(newTheme);
     });
-  });
+ });
