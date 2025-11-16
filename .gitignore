@@ -131,3 +131,7 @@ Thumbs.db
 uploads/
 \n+# Local data (exclude large datasets)
 data/
+
+
+# logs
+.firebase
