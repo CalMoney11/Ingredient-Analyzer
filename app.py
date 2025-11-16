@@ -68,6 +68,28 @@ def analyze():
 # or check the `uploads/` directory directly on the server.
 
 
+@app.route('/get_recipes', methods=['POST'])
+def get_recipes():
+    """
+    Generate recipes from stored ingredient analysis.
+    """
+    try:
+        data = request.get_json() or {}
+        ingredient_analysis = data.get('ingredient_analysis', '')
+        
+        if not ingredient_analysis:
+            return jsonify({"success": False, "error": "No ingredient analysis provided"}), 400
+        
+        recipes = analyzer.generate_recipes(ingredient_analysis)
+        
+        return jsonify({
+            "success": True,
+            "recipes": recipes
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "ok"})

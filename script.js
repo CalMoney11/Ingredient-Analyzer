@@ -101,25 +101,83 @@ async function getRecipes() {
         const result = await response.json();
 
         if (result.success && result.data) {
-            // Extract the analysis from the backend response
-            let responseText = "";
+            const ingredientAnalysis = result.data;
             
-            // Check what data the analyzer returned
-            if (result.data.prompt_analysis && result.data.prompt_analysis.analysis) {
-                responseText = result.data.prompt_analysis.analysis;
-            } else if (result.data.image_analysis && result.data.image_analysis.analysis) {
-                responseText = result.data.image_analysis.analysis;
-            } else {
-                // Fallback: show all returned data as formatted text
-                responseText = `<pre>${JSON.stringify(result.data, null, 2)}</pre>`;
-            }
-
-            // 4. Display Results
+            // Show ingredient analysis
             outputDiv.innerHTML = `
-                <div class="prose max-w-none">
-                    ${markdownToHtml(responseText)}
+                <div class="space-y-4">
+                    <h3 class="text-xl font-semibold text-gray-800">Detected Ingredients:</h3>
+                    <div class="bg-gray-50 p-4 rounded whitespace-pre-wrap">${ingredientAnalysis}</div>
+                    <p class="text-blue-600 font-medium">Generating recipe ideas...</p>
                 </div>
             `;
+            
+            buttonText.innerHTML = 'Generating Recipes<span class="loading-dot">.</span><span class="loading-dot">.</span><span class="loading-dot">.</span>';
+            
+            // Step 2: Generate recipes from ingredient analysis
+            const recipesUrl = 'http://localhost:5000/get_recipes';
+            const recipesResponse = await withExponentialBackoff(() =>
+                fetch(recipesUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ ingredient_analysis: ingredientAnalysis })
+                })
+            );
+            
+            if (!recipesResponse.ok) {
+                throw new Error(`Recipe generation failed: ${recipesResponse.statusText}`);
+            }
+            
+            const recipesResult = await recipesResponse.json();
+            
+            if (recipesResult.success && recipesResult.recipes) {
+                const recipes = recipesResult.recipes;
+                
+                const recipesHTML = recipes.map((recipe, idx) => {
+                    const recipeIngredients = recipe.ingredients || [];
+                    const ingredientsListHTML = recipeIngredients.map(ing => 
+                        `<li class="text-sm text-gray-600">• ${ing}</li>`
+                    ).join('');
+                    
+                    const steps = recipe.steps || [];
+                    const stepsHTML = steps.map((step, stepIdx) => 
+                        `<li class="text-sm text-gray-600">${stepIdx + 1}. ${step}</li>`
+                    ).join('');
+                    
+                    return `
+                        <div class="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                            <h4 class="text-lg font-semibold text-blue-700 mb-3">${recipe.title}:</h4>
+                            <div class="mb-3">
+                                <h5 class="text-sm font-semibold text-gray-700 mb-1">Ingredients:</h5>
+                                <ul class="space-y-1">
+                                    ${ingredientsListHTML}
+                                </ul>
+                            </div>
+                            <div>
+                                <h5 class="text-sm font-semibold text-gray-700 mb-1">Steps:</h5>
+                                <ol class="space-y-1 list-none">
+                                    ${stepsHTML}
+                                </ol>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                outputDiv.innerHTML = `
+                    <div class="space-y-4">
+                        <h3 class="text-xl font-semibold text-gray-800">Your Ingredients:</h3>
+                        <div class="bg-gray-50 p-3 rounded text-sm whitespace-pre-wrap">${ingredientAnalysis}</div>
+                        <h3 class="text-xl font-semibold text-green-700">Recipe Ideas:</h3>
+                        <div class="space-y-3">
+                            ${recipesHTML}
+                        </div>
+                    </div>
+                `;
+            } else {
+                throw new Error(recipesResult.error || 'Failed to generate recipes');
+            }
         } else {
             throw new Error(result.error || 'Unknown error from backend');
         }
