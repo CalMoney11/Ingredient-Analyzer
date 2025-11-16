@@ -100,26 +100,98 @@ async function getRecipes() {
 
         const result = await response.json();
 
-        if (result.success && result.data) {
-            // Extract the analysis from the backend response
-            let responseText = "";
+        if (result.success && result.ingredients) {
+            const ingredientsList = result.ingredients;
             
-            // Check what data the analyzer returned
-            if (result.data.prompt_analysis && result.data.prompt_analysis.analysis) {
-                responseText = result.data.prompt_analysis.analysis;
-            } else if (result.data.image_analysis && result.data.image_analysis.analysis) {
-                responseText = result.data.image_analysis.analysis;
-            } else {
-                // Fallback: show all returned data as formatted text
-                responseText = `<pre>${JSON.stringify(result.data, null, 2)}</pre>`;
+            if (ingredientsList.length === 0) {
+                outputDiv.innerHTML = '<p class="text-yellow-600">No ingredients detected. Try a different image or prompt.</p>';
+                return;
             }
-
-            // 4. Display Results
+            
+            // Show detected ingredients
+            const ingredientsHTML = ingredientsList.map(ingredient => 
+                `<li class="py-2 px-3 bg-gray-50 rounded">${ingredient}</li>`
+            ).join('');
+            
             outputDiv.innerHTML = `
-                <div class="prose max-w-none">
-                    ${markdownToHtml(responseText)}
+                <div class="space-y-4">
+                    <h3 class="text-xl font-semibold text-gray-800">Detected Ingredients (${ingredientsList.length}):</h3>
+                    <ul class="space-y-2">
+                        ${ingredientsHTML}
+                    </ul>
+                    <p class="text-blue-600 font-medium">Finding recipes...</p>
                 </div>
             `;
+            
+            // Now get recipes using those ingredients
+            buttonText.innerHTML = 'Finding Recipes <span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>';
+            
+            const recipesUrl = 'http://localhost:5000/get_recipes';
+            const recipesResponse = await withExponentialBackoff(() =>
+                fetch(recipesUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                })
+            );
+            
+            if (!recipesResponse.ok) {
+                throw new Error(`Recipe fetch failed: ${recipesResponse.statusText}`);
+            }
+            
+            const recipesResult = await recipesResponse.json();
+            
+            if (recipesResult.success && recipesResult.recipes) {
+                const recipes = recipesResult.recipes;
+                
+                if (recipes.length === 0) {
+                    outputDiv.innerHTML = `
+                        <div class="space-y-4">
+                            <h3 class="text-xl font-semibold text-gray-800">Detected Ingredients (${ingredientsList.length}):</h3>
+                            <ul class="space-y-2">
+                                ${ingredientsHTML}
+                            </ul>
+                            <p class="text-yellow-600 font-medium mt-4">No recipes found matching your ingredients. Try adding more common ingredients!</p>
+                        </div>
+                    `;
+                } else {
+                    // Display recipes
+                    const recipesHTML = recipes.map((recipe, idx) => {
+                        const recipeIngredients = recipe.ingredients || [];
+                        const ingredientsListHTML = recipeIngredients.slice(0, 8).map(ing => 
+                            `<li class="text-sm text-gray-600">• ${ing}</li>`
+                        ).join('');
+                        const moreCount = recipeIngredients.length > 8 ? recipeIngredients.length - 8 : 0;
+                        
+                        return `
+                            <div class="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                                <h4 class="text-lg font-semibold text-blue-700 mb-2">${idx + 1}. ${recipe.title}</h4>
+                                <ul class="space-y-1">
+                                    ${ingredientsListHTML}
+                                    ${moreCount > 0 ? `<li class="text-sm text-gray-500 italic">+ ${moreCount} more ingredients</li>` : ''}
+                                </ul>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    outputDiv.innerHTML = `
+                        <div class="space-y-4">
+                            <h3 class="text-xl font-semibold text-gray-800">Your Ingredients (${ingredientsList.length}):</h3>
+                            <ul class="space-y-2 mb-4">
+                                ${ingredientsHTML}
+                            </ul>
+                            <h3 class="text-xl font-semibold text-green-700">Top 5 Recipes (from ${recipesResult.total_found} matches):</h3>
+                            <div class="space-y-3">
+                                ${recipesHTML}
+                            </div>
+                        </div>
+                    `;
+                }
+            } else {
+                throw new Error(recipesResult.error || 'Failed to get recipes');
+            }
         } else {
             throw new Error(result.error || 'Unknown error from backend');
         }

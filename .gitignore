@@ -129,3 +129,5 @@ Thumbs.db
 
 # Uploaded files
 uploads/
+\n+# Local data (exclude large datasets)
+data/
