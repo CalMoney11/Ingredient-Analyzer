@@ -251,13 +251,13 @@ async function generateAiRecipes() {
             throw new Error(data.error || 'Bad recipe response');
         }
         const recipesHTML = data.recipes.map(r => {
-            const ing = (r.ingredients||[]).map(i=>`<li class='text-sm'>• ${i}</li>`).join('');
-            const steps = (r.steps||[]).map((s,idx)=>`<li class='text-sm'>${idx+1}. ${s}</li>`).join('');
+            const ing = (r.ingredients||[]).map(i=>`<li class='text-sm'>${i}</li>`).join('');
+            const steps = (r.steps||[]).map(s=>`<li class='text-sm'>${s}</li>`).join('');
             return `
                 <div class='border border-gray-200 rounded-lg p-4 bg-white shadow-sm'>
                     <h4 class='text-lg font-semibold text-green-700 mb-2'>${r.name}</h4>
                     <h5 class='font-medium text-gray-700'>Ingredients:</h5>
-                    <ul class='mb-3 space-y-1'>${ing}</ul>
+                    <ul class='list-disc ml-5 mb-3 space-y-1'>${ing}</ul>
                     <h5 class='font-medium text-gray-700'>Steps:</h5>
                     <ol class='list-decimal ml-5 space-y-1'>${steps}</ol>
                 </div>
