@@ -1,6 +1,5 @@
 """
 Vercel serverless API for Ingredient Analyzer.
-Frontend is hosted separately on GitHub Pages.
 """
 import os
 import sys
@@ -17,12 +16,15 @@ app = Flask(__name__)
 
 # Enable CORS for your GitHub Pages domain
 CORS(app, resources={
-    r"/api/*": {
+    r"/*": {
         "origins": [
-            "https://calmoney11.github.io/Ingredient-Analyzer/",  # Replace with your actual GitHub Pages URL
-            "http://localhost:*",  # For local testing
+            "https://calmoney11.github.io",
+            "http://localhost:*",
             "http://127.0.0.1:*"
-        ]
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"],
+        "supports_credentials": False
     }
 })
 
@@ -31,18 +33,35 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 analyzer = IngredientAnalyzer()
 
+@app.route("/", methods=["GET"])
+@app.route("/api", methods=["GET"])
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "message": "Ingredient Analyzer API is running"})
+    """Health check endpoint"""
+    return jsonify({
+        "status": "ok", 
+        "message": "Ingredient Analyzer API is running",
+        "cors_enabled": True
+    })
 
-@app.route("/api/analyze", methods=["POST"])
+@app.route("/api/analyze", methods=["POST", "OPTIONS"])
 def analyze():
     """
     Accepts multipart form-data with optional image and prompt.
     """
+    # Handle preflight OPTIONS request
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+    
     try:
         image = request.files.get("image")
         prompt = request.form.get("prompt", "")
+
+        if not image and not prompt:
+            return jsonify({
+                "success": False, 
+                "error": "Please provide either an image or a prompt"
+            }), 400
 
         image_path = None
         if image and image.filename:
@@ -61,7 +80,12 @@ def analyze():
                 pass
 
         return jsonify({"success": True, "data": result})
+    
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        print(f"Error in analyze endpoint: {str(e)}")
+        return jsonify({
+            "success": False, 
+            "error": str(e)
+        }), 500
 
-# Export for Vercel (no app.run())
+# Export for Vercel

@@ -1,6 +1,6 @@
 // --- Configuration ---
-// PRODUCTION: Replace with your actual Vercel URL after deployment
-const API_URL = 'https://ingredient-analyzer-beta.vercel.app/';
+// PRODUCTION: Your Vercel backend URL
+const API_URL = 'https://ingredient-analyzer-beta.vercel.app/api/analyze';
 // LOCAL TESTING: Uncomment the line below when testing locally
 // const API_URL = 'http://localhost:5000/analyze';
 
