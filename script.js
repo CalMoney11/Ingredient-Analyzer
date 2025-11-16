@@ -5,6 +5,11 @@ const API_URL = isLocal ? 'http://localhost:5000/api/analyze' : 'https://recipe-
 // Recipes disabled in current mode but keep constant for potential future use.
 const RECIPES_URL = isLocal ? 'http://localhost:5000/api/get_recipes' : 'https://recipe-backend-theta.vercel.app/api/get_recipes';
 
+// --- Global state for recipe management ---
+let allDetectedIngredients = [];
+let selectedRecipeData = null;
+let allRecipesData = [];
+
 // --- Helper Functions ---
 
 async function fileToBase64(file) {
@@ -347,11 +352,175 @@ async function generateAiRecipes() {
         if (!data.success || !Array.isArray(data.recipes)) {
             throw new Error(data.error || 'Bad recipe response');
         }
+        
+        // Store recipes and ingredients globally
+        allRecipesData = data.recipes;
+        allDetectedIngredients = data.ingredients || [];
+        
+        displayRecipes(data.recipes, false);
+        
+    } catch (err) {
+        outputDiv.insertAdjacentHTML('beforeend', `<p class='text-red-600 mt-2'>Recipe generation error: ${err.message}</p>`);
+    } finally {
+        const loadEl = document.getElementById('recipeLoading');
+        if (loadEl) loadEl.remove();
+    }
+}
+
+// --- Display recipes with Pick Recipe buttons ---
+function displayRecipes(recipes, isLeftover = false) {
+    const outputDiv = document.getElementById('recipeContent');
+    const recipesHTML = recipes.map((r, idx) => {
+        const ing = (r.ingredients||[]).map(i=>`<li class='text-sm'>${i}</li>`).join('');
+        const steps = (r.steps||[]).map(s=>`<li class='text-sm'>${s}</li>`).join('');
+        
+        // Format nutrition info if available
+        let nutritionHTML = '';
+        if (r.nutrition) {
+            const n = r.nutrition;
+            nutritionHTML = `
+                <div class='mt-3 pt-3 border-t border-gray-200'>
+                    <h5 class='font-medium text-gray-700 mb-2'>Nutrition (${n.portion_size || '1 serving'}):</h5>
+                    <div class='flex flex-wrap gap-3 text-xs'>
+                        <span class='bg-blue-50 px-3 py-1 rounded'>
+                            <span class='font-semibold text-blue-700'>${n.calories || 0}</span> <span class='text-gray-600'>cal</span>
+                        </span>
+                        <span class='bg-green-50 px-3 py-1 rounded'>
+                            <span class='font-semibold text-green-700'>${n.protein || 0}g</span> <span class='text-gray-600'>protein</span>
+                        </span>
+                        <span class='bg-yellow-50 px-3 py-1 rounded'>
+                            <span class='font-semibold text-yellow-700'>${n.fat || 0}g</span> <span class='text-gray-600'>fat</span>
+                        </span>
+                        <span class='bg-purple-50 px-3 py-1 rounded'>
+                            <span class='font-semibold text-purple-700'>${n.carbs || 0}g</span> <span class='text-gray-600'>carbs</span>
+                        </span>
+                        <span class='bg-pink-50 px-3 py-1 rounded'>
+                            <span class='font-semibold text-pink-700'>${n.sugar || 0}g</span> <span class='text-gray-600'>sugar</span>
+                        </span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        return `
+            <div class='recipe-card border border-gray-200 rounded-lg p-4 bg-white shadow-sm' data-recipe-index='${idx}'>
+                <h4 class='text-2xl font-bold text-green-700 mb-3'>${r.name}</h4>
+                <h5 class='font-medium text-gray-700'>Ingredients:</h5>
+                <ul class='list-disc ml-5 mb-3 space-y-1'>${ing}</ul>
+                <h5 class='font-medium text-gray-700'>Steps:</h5>
+                <ol class='list-decimal ml-5 mb-3 space-y-1'>${steps}</ol>
+                ${nutritionHTML}
+                ${!isLeftover ? `<button onclick='selectRecipe(${idx})' class='mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition'>Pick Recipe</button>` : ''}
+            </div>
+        `;
+    }).join('');
+    
+    const existing = document.getElementById('aiRecipesBlock');
+    if (existing) existing.remove();
+    
+    const titleText = isLeftover ? 'Leftover Recipes' : 'AI Generated Recipes';
+    outputDiv.insertAdjacentHTML('beforeend', `
+        <div id='aiRecipesBlock' class='mt-6 space-y-6'>
+            <h3 class='text-xl font-semibold text-gray-800'>${titleText} (${recipes.length}):</h3>
+            ${recipesHTML}
+        </div>
+    `);
+}
+
+// --- Select a recipe and show leftover recipes button ---
+function selectRecipe(recipeIndex) {
+    if (recipeIndex < 0 || recipeIndex >= allRecipesData.length) return;
+    
+    selectedRecipeData = allRecipesData[recipeIndex];
+    
+    // Hide all non-selected recipe cards
+    const allCards = document.querySelectorAll('.recipe-card');
+    allCards.forEach((card, idx) => {
+        if (idx !== recipeIndex) {
+            card.style.display = 'none';
+        } else {
+            // Remove Pick Recipe button from selected card
+            const pickBtn = card.querySelector('button');
+            if (pickBtn) pickBtn.remove();
+        }
+    });
+    
+    // Add leftover recipes button and show all recipes button
+    const outputDiv = document.getElementById('recipeContent');
+    const existing = document.getElementById('leftoverActions');
+    if (existing) existing.remove();
+    
+    outputDiv.insertAdjacentHTML('beforeend', `
+        <div id='leftoverActions' class='mt-6 space-y-3'>
+            <button onclick='generateLeftoverRecipes()' class='px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition'>Generate Leftover Recipes</button>
+            <button onclick='showAllRecipes()' class='ml-3 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition'>Show All Recipes</button>
+        </div>
+    `);
+}
+
+// --- Show all recipes again ---
+function showAllRecipes() {
+    const allCards = document.querySelectorAll('.recipe-card');
+    allCards.forEach(card => {
+        card.style.display = 'block';
+    });
+    
+    const leftoverActions = document.getElementById('leftoverActions');
+    if (leftoverActions) leftoverActions.remove();
+    
+    const leftoverBlock = document.getElementById('leftoverRecipesBlock');
+    if (leftoverBlock) leftoverBlock.remove();
+    
+    selectedRecipeData = null;
+}
+
+// --- Generate recipes using leftover ingredients ---
+async function generateLeftoverRecipes() {
+    if (!selectedRecipeData) return;
+    
+    const outputDiv = document.getElementById('recipeContent');
+    outputDiv.insertAdjacentHTML('beforeend', '<p id="leftoverLoading" class="text-purple-600 mt-2">Generating leftover recipes...</p>');
+    
+    try {
+        // Calculate leftover ingredients (detected - used in selected recipe)
+        const usedIngredients = (selectedRecipeData.ingredients || []).map(i => i.toLowerCase().trim());
+        const leftoverIngredients = allDetectedIngredients.filter(ing => {
+            const ingLower = ing.toLowerCase().trim();
+            return !usedIngredients.some(used => ingLower.includes(used) || used.includes(ingLower));
+        });
+        
+        if (leftoverIngredients.length === 0) {
+            outputDiv.insertAdjacentHTML('beforeend', '<p class="text-yellow-600 mt-2">No leftover ingredients remaining!</p>');
+            return;
+        }
+        
+        console.log('Leftover ingredients:', leftoverIngredients);
+        
+        const resp = await fetch(`${API_URL.replace('/analyze','')}/generate_leftover_recipes`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                leftover_ingredients: leftoverIngredients
+            })
+        });
+        
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${resp.status}`);
+        }
+        
+        const data = await resp.json();
+        if (!data.success || !Array.isArray(data.recipes)) {
+            throw new Error(data.error || 'Bad leftover recipe response');
+        }
+        
+        // Display leftover recipes
         const recipesHTML = data.recipes.map(r => {
             const ing = (r.ingredients||[]).map(i=>`<li class='text-sm'>${i}</li>`).join('');
             const steps = (r.steps||[]).map(s=>`<li class='text-sm'>${s}</li>`).join('');
             
-            // Format nutrition info if available
             let nutritionHTML = '';
             if (r.nutrition) {
                 const n = r.nutrition;
@@ -380,8 +549,8 @@ async function generateAiRecipes() {
             }
             
             return `
-                <div class='border border-gray-200 rounded-lg p-4 bg-white shadow-sm'>
-                    <h4 class='text-2xl font-bold text-green-700 mb-3'>${r.name}</h4>
+                <div class='border border-purple-200 rounded-lg p-4 bg-purple-50 shadow-sm'>
+                    <h4 class='text-2xl font-bold text-purple-700 mb-3'>${r.name}</h4>
                     <h5 class='font-medium text-gray-700'>Ingredients:</h5>
                     <ul class='list-disc ml-5 mb-3 space-y-1'>${ing}</ul>
                     <h5 class='font-medium text-gray-700'>Steps:</h5>
@@ -390,18 +559,22 @@ async function generateAiRecipes() {
                 </div>
             `;
         }).join('');
-        const existing = document.getElementById('aiRecipesBlock');
+        
+        const existing = document.getElementById('leftoverRecipesBlock');
         if (existing) existing.remove();
+        
         outputDiv.insertAdjacentHTML('beforeend', `
-            <div id='aiRecipesBlock' class='mt-6 space-y-6'>
-                <h3 class='text-xl font-semibold text-gray-800'>AI Generated Recipes (${data.recipes.length}):</h3>
+            <div id='leftoverRecipesBlock' class='mt-6 space-y-6'>
+                <h3 class='text-xl font-semibold text-purple-800'>Leftover Recipes (${data.recipes.length}):</h3>
+                <p class='text-sm text-gray-600'>Using remaining ingredients: ${leftoverIngredients.join(', ')}</p>
                 ${recipesHTML}
             </div>
         `);
+        
     } catch (err) {
-        outputDiv.insertAdjacentHTML('beforeend', `<p class='text-red-600 mt-2'>Recipe generation error: ${err.message}</p>`);
+        outputDiv.insertAdjacentHTML('beforeend', `<p class='text-red-600 mt-2'>Leftover recipe generation error: ${err.message}</p>`);
     } finally {
-        const loadEl = document.getElementById('recipeLoading');
+        const loadEl = document.getElementById('leftoverLoading');
         if (loadEl) loadEl.remove();
     }
 }

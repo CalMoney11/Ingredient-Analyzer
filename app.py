@@ -184,6 +184,41 @@ def generate_recipes():
     except Exception as e:
         return jsonify({"success": False, "error": f"Unexpected error generating recipes: {e}", "error_type": "exception"}), 500
 
+@app.route('/generate_leftover_recipes', methods=['POST'])
+@app.route('/api/generate_leftover_recipes', methods=['POST'])
+def generate_leftover_recipes():
+    """Generate AI recipes using leftover ingredients after a recipe has been selected."""
+    try:
+        if not request.is_json:
+            return jsonify({"success": False, "error": "Request must be JSON"}), 400
+        
+        data = request.get_json()
+        leftover_ingredients = data.get('leftover_ingredients', [])
+        
+        if not leftover_ingredients or not isinstance(leftover_ingredients, list):
+            return jsonify({"success": False, "error": "No leftover ingredients provided"}), 400
+        
+        print(f"🥘 Generating leftover recipes with {len(leftover_ingredients)} ingredients: {leftover_ingredients}")
+        
+        # Generate recipes using leftover ingredients
+        recipes = analyzer.generate_recipes(leftover_ingredients, count=5, user_preferences="Focus on using these leftover ingredients efficiently")
+        
+        if not recipes:
+            return jsonify({
+                "success": False,
+                "error": "Leftover recipe generation failed after retries.",
+                "error_type": "generation_failed"
+            }), 500
+        
+        return jsonify({
+            "success": True,
+            "leftover_ingredients": leftover_ingredients,
+            "recipes": recipes,
+            "count": len(recipes)
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Unexpected error generating leftover recipes: {e}", "error_type": "exception"}), 500
+
 
 if __name__ == "__main__":
     # Run dev server: use the venv python and run `python app.py`.
