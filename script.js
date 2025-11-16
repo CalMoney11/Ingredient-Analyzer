@@ -97,13 +97,14 @@ async function getRecipes() {
         }
 
         // -------- STEP 2: Fetch Recipes ----------
-        buttonText.innerHTML = `Finding Recipes<span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>`;
+        // 👇 MODIFY THIS SECTION (starts around line 88)
+        buttonText.innerHTML = `Finding Recipes<span class="loading-dot">.</span><span class="loading-dot">.</span><span class="loading-dot">.</span>`;
 
         const recipesResponse = await withExponentialBackoff(() =>
             fetch(RECIPES_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({})
+                body: JSON.stringify({ ingredients: ingredientsList })  // ✅ CHANGE THIS LINE
             })
         );
 
