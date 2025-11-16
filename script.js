@@ -1,6 +1,6 @@
 // --- Configuration ---
 // PRODUCTION: Replace the placeholder below with the actual URL of your deployed Cloud Run service!
-const BASE_CLOUD_RUN_URL = 'https://[YOUR-CLOUD-RUN-SERVICE-URL]'; // E.g., https://ai-recipe-analyzer-XXXXXX.a.run.app
+const BASE_CLOUD_RUN_URL = 'https://ai-recipe-analyzer-backend-916947363444.us-central1.run.app'; // E.g., https://ai-recipe-analyzer-XXXXXX.a.run.app
 
 const API_URL = `${BASE_CLOUD_RUN_URL}/analyze`;
 const RECIPES_URL = `${BASE_CLOUD_RUN_URL}/get_recipes`;
