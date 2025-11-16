@@ -22,12 +22,98 @@ function displayFileName(input) {
     const file = input.files[0];
     
     if (file) {
+        // Validate file type
+        const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
+        
+        if (!validImageTypes.includes(file.type)) {
+            imageStatus.textContent = '❌ Please select a valid image file (JPG, PNG, GIF, WebP, HEIC)';
+            imageStatus.style.color = 'red';
+            input.value = ''; // Clear invalid file
+            clearImagePreview();
+            return;
+        }
+        
+        // Validate file size (max 10MB)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            imageStatus.textContent = `❌ File too large (${(file.size / 1024 / 1024).toFixed(2)} MB). Max size: 10MB`;
+            imageStatus.style.color = 'red';
+            input.value = '';
+            clearImagePreview();
+            return;
+        }
+        
         fileNameDisplay.textContent = file.name;
-        imageStatus.textContent = `File selected: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+        imageStatus.textContent = `✅ File selected: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+        imageStatus.style.color = 'var(--text-color)';
+        
+        // Hide the file input wrapper once image is selected
+        const wrapper = document.querySelector('.file-input-wrapper');
+        wrapper.style.display = 'none';
+        
+        // Add image preview
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            // Remove existing preview if any
+            const existingPreview = document.getElementById('imagePreview');
+            if (existingPreview) existingPreview.remove();
+            
+            // Create preview element - now the main focus
+            const previewDiv = document.createElement('div');
+            previewDiv.id = 'imagePreview';
+            previewDiv.className = 'mt-4 text-center';
+            previewDiv.innerHTML = `
+                <div class="preview-container">
+                    <img src="${e.target.result}" alt="Uploaded Image" class="preview-image-large mx-auto rounded-lg shadow-lg">
+                    <div class="preview-actions">
+                        <button onclick="clearImage()" class="change-image-btn">
+                            📷 Change Image
+                        </button>
+                        <p class="preview-filename">${file.name}</p>
+                    </div>
+                </div>
+            `;
+            
+            // Insert after the file input wrapper
+            wrapper.parentNode.insertBefore(previewDiv, wrapper.nextSibling);
+        };
+        
+        reader.onerror = function() {
+            imageStatus.textContent = '❌ Error reading file. Please try another image.';
+            imageStatus.style.color = 'red';
+            const wrapper = document.querySelector('.file-input-wrapper');
+            wrapper.style.display = 'block'; // Show input again on error
+        };
+        
+        reader.readAsDataURL(file);
     } else {
         fileNameDisplay.textContent = 'Upload/Capture Photo';
         imageStatus.textContent = 'No image selected.';
+        imageStatus.style.color = 'var(--text-color)';
+        clearImagePreview();
+        // Show the file input wrapper again
+        const wrapper = document.querySelector('.file-input-wrapper');
+        if (wrapper) wrapper.style.display = 'block';
     }
+}
+
+function clearImage() {
+    const input = document.getElementById('imageInput');
+    input.value = '';
+    clearImagePreview();
+    // Show the file input wrapper again
+    const wrapper = document.querySelector('.file-input-wrapper');
+    if (wrapper) wrapper.style.display = 'block';
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const imageStatus = document.getElementById('imageStatus');
+    fileNameDisplay.textContent = 'Upload/Capture Photo';
+    imageStatus.textContent = 'No image selected.';
+    imageStatus.style.color = 'var(--text-color)';
+}
+
+function clearImagePreview() {
+    const preview = document.getElementById('imagePreview');
+    if (preview) preview.remove();
 }
 
 function simpleMarkdownToHtml(text) {

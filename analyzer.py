@@ -66,13 +66,35 @@ class IngredientAnalyzer:
             
             # Generate response
             response = self.vision_model.generate_content([prompt, image_file])
+            raw_text = response.text.strip()
+            print(f"Raw Gemini response: {raw_text[:200]}...")
+            
+            # Clean markdown code blocks if present (```json ... ```)
+            cleaned_text = raw_text
+            if cleaned_text.startswith("```"):
+                lines = cleaned_text.split('\n')
+                # Remove first line if it's a code fence (```json or ```)
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                # Remove last line if it's a closing fence (```)
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                cleaned_text = '\n'.join(lines).strip()
+            
+            print(f"Cleaned text: {cleaned_text[:200]}...")
             
             # Parse JSON response
             try:
-                ingredients_list = json.loads(response.text.strip())
-                return ingredients_list if isinstance(ingredients_list, list) else []
-            except json.JSONDecodeError:
-                print(f"Warning: Could not parse JSON from image analysis. Raw response: {getattr(response, 'text', '')}")
+                ingredients_list = json.loads(cleaned_text)
+                if isinstance(ingredients_list, list):
+                    print(f"✅ Successfully parsed {len(ingredients_list)} ingredients")
+                    return ingredients_list
+                else:
+                    print(f"⚠️ Parsed JSON is not a list: {type(ingredients_list)}")
+                    return []
+            except json.JSONDecodeError as je:
+                print(f"❌ JSON parse error: {je}")
+                print(f"Failed to parse: {cleaned_text}")
                 return []
         except UnicodeDecodeError as e:
             print(f"Unicode decode error during image analysis: {e}")

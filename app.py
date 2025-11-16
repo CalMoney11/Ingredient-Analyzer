@@ -38,21 +38,32 @@ def analyze():
         image = request.files.get("image")  # Image is primary
         prompt = request.form.get("prompt", "").strip()  # Optional fallback
 
+        print(f"📥 Received analyze request - Image: {image.filename if image else 'None'}, Prompt: {prompt}")
+
         image_path = None
         if image and image.filename:
             filename = secure_filename(image.filename)
             unique_name = f"{uuid4().hex}_{filename}"
             image_path = os.path.join(UPLOAD_DIR, unique_name)
             image.save(image_path)
+            print(f"💾 Saved image to: {image_path}")
 
         ingredients_list = analyzer.analyze(image_path=image_path, prompt=prompt if not image_path else None)
+        print(f"✅ Analysis complete. Found {len(ingredients_list)} ingredients: {ingredients_list}")
 
         # Cleanup temp file
         if image_path and os.path.exists(image_path):
             try:
                 os.remove(image_path)
-            except Exception:
-                pass
+                print(f"🗑️ Cleaned up temp file: {image_path}")
+            except Exception as e:
+                print(f"⚠️ Failed to cleanup temp file: {e}")
+
+        if not ingredients_list:
+            return jsonify({
+                "success": False,
+                "error": "No ingredients detected. Try a clearer image or check the console logs."
+            }), 400
 
         return jsonify({
             "success": True,
@@ -60,6 +71,9 @@ def analyze():
             "ingredients": ingredients_list
         })
     except Exception as e:
+        print(f"❌ Analysis error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"success": False, "error": f"Analysis failed: {e}"}), 500
 
 
