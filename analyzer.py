@@ -4,6 +4,7 @@ Handles image processing and prompt-based ingredient detection using Gemini API.
 """
 
 from typing import Optional
+import json
 import google.generativeai as genai
 from config import GEMINI_API_KEY, GEMINI_MODEL
 import json
@@ -24,7 +25,7 @@ class IngredientAnalyzer:
 
     def analyze_image(self, image_path: str) -> list:
         """
-        Analyze an image to detect ingredients.
+        Analyze an image to detect ingredients with quality info.
 
         Args:
             image_path: Path to the image file
