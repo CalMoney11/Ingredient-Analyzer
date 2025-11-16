@@ -7,6 +7,7 @@ from typing import Optional
 import json
 import google.generativeai as genai
 from config import GEMINI_API_KEY, GEMINI_MODEL
+import json
 
 
 class IngredientAnalyzer:
@@ -20,8 +21,9 @@ class IngredientAnalyzer:
         genai.configure(api_key=GEMINI_API_KEY)
         self.model = genai.GenerativeModel(GEMINI_MODEL)
         self.vision_model = genai.GenerativeModel(GEMINI_MODEL)
+        self.ingredients_list = []  # Store the last analyzed ingredients
 
-    def analyze_image(self, image_path: str) -> str:
+    def analyze_image(self, image_path: str) -> list:
         """
         Analyze an image to detect ingredients with quality info.
 
@@ -29,33 +31,35 @@ class IngredientAnalyzer:
             image_path: Path to the image file
 
         Returns:
-            String containing ingredient list with quantities and quality
+            List of ingredient names as strings
         """
         try:
             # Upload image file
             image_file = genai.upload_file(image_path)
             
-            # Create prompt for detailed ingredient analysis
-            prompt = """Analyze this image and identify all visible ingredients or food items.
+            # Create prompt for ingredient analysis - request JSON array
+            prompt = """Analyze this image and identify all visible ingredients or food items. 
+            Return ONLY a JSON array of ingredient names, like this:
+            ["ingredient1", "ingredient2", "ingredient3"]
             
-For each ingredient, list:
-- Name
-- Quantity (estimate if visible)
-- Quality/freshness/condition
-
-Format as a clear, structured text list that includes all this information.
-Example:
-- Tomatoes (3 medium, ripe and fresh)
-- Onion (1 large, good condition)
-- Garlic (4 cloves, fresh)"""
+            Do not include any other text, explanations, or formatting. Just the JSON array of ingredient names."""
             
             # Generate response
             response = self.vision_model.generate_content([prompt, image_file])
-            return response.text
+            
+            # Parse JSON response
+            try:
+                ingredients_list = json.loads(response.text.strip())
+                return ingredients_list if isinstance(ingredients_list, list) else []
+            except json.JSONDecodeError:
+                # Fallback: return empty list if parsing fails
+                print(f"Warning: Could not parse JSON from image analysis. Raw response: {response.text}")
+                return []
         except Exception as e:
-            return f"Error analyzing image: {str(e)}"
+            print(f"Error analyzing image: {str(e)}")
+            return []
 
-    def analyze_prompt(self, prompt: str) -> str:
+    def analyze_prompt(self, prompt: str) -> list:
         """
         Analyze a text prompt to extract ingredient information.
 
@@ -63,30 +67,32 @@ Example:
             prompt: Text prompt containing ingredient information
 
         Returns:
-            String containing structured ingredient list
+            List of ingredient names as strings
         """
         try:
-            # Create system instruction for ingredient parsing
-            system_prompt = """Parse the user's input and extract all mentioned ingredients.
+            # Create system instruction for ingredient parsing - request JSON array
+            system_prompt = """You are an ingredient parser. Extract all ingredients from the user's input.
+            Return ONLY a JSON array of ingredient names, like this:
+            ["ingredient1", "ingredient2", "ingredient3"]
             
-For each ingredient, list:
-- Name
-- Quantity (with units)
-- Any quality or condition notes
-
-Format as a clear, structured text list.
-Example:
-- Flour (2 cups, all-purpose)
-- Eggs (3 large, fresh)
-- Milk (1 cup, whole)"""
+            Do not include quantities, units, explanations, or any other text. Just the ingredient names in a JSON array."""
             
             # Generate response
             response = self.model.generate_content(system_prompt + "\n\nUser input: " + prompt)
-            return response.text
+            
+            # Parse JSON response
+            try:
+                ingredients_list = json.loads(response.text.strip())
+                return ingredients_list if isinstance(ingredients_list, list) else []
+            except json.JSONDecodeError:
+                # Fallback: return empty list if parsing fails
+                print(f"Warning: Could not parse JSON from prompt analysis. Raw response: {response.text}")
+                return []
         except Exception as e:
-            return f"Error analyzing prompt: {str(e)}"
+            print(f"Error analyzing prompt: {str(e)}")
+            return []
 
-    def analyze(self, image_path: Optional[str] = None, prompt: Optional[str] = None) -> str:
+    def analyze(self, image_path: Optional[str] = None, prompt: Optional[str] = None) -> list:
         """
         Analyze ingredients from either an image or prompt.
 
@@ -95,91 +101,100 @@ Example:
             prompt: Optional text prompt
 
         Returns:
-            String containing combined ingredient analysis
+            Combined list of all detected ingredients (deduplicated)
         """
-        parts = []
+        all_ingredients = []
 
         if image_path:
-            image_result = self.analyze_image(image_path)
-            parts.append(f"From Image:\n{image_result}")
+            image_ingredients = self.analyze_image(image_path)
+            all_ingredients.extend(image_ingredients)
 
         if prompt:
-            prompt_result = self.analyze_prompt(prompt)
-            parts.append(f"From Text:\n{prompt_result}")
+            prompt_ingredients = self.analyze_prompt(prompt)
+            all_ingredients.extend(prompt_ingredients)
 
-        return "\n\n".join(parts) if parts else "No ingredients detected."
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_ingredients = []
+        for ingredient in all_ingredients:
+            ingredient_lower = ingredient.lower()
+            if ingredient_lower not in seen:
+                seen.add(ingredient_lower)
+                unique_ingredients.append(ingredient)
 
-    def generate_recipes(self, ingredient_analysis: str) -> list:
+        # Store the ingredients for later use
+        self.ingredients_list = unique_ingredients
+
+        return unique_ingredients
+    
+    def get_stored_ingredients(self) -> list:
         """
-        Generate 5 recipe ideas from ingredient analysis.
-
-        Args:
-            ingredient_analysis: String containing ingredient info with quantities/quality
-
+        Get the last analyzed ingredients list.
+        
         Returns:
-            List of recipe dicts with 'title', 'ingredients', and 'steps'
+            List of ingredients from the last analysis
+        """
+        return self.ingredients_list
+    
+    def filter_top_recipes(self, ingredients: list, recipes: list, top_n: int = 5) -> list:
+        """
+        Use Gemini to rank and filter recipes based on ingredients.
+        
+        Args:
+            ingredients: List of available ingredients
+            recipes: List of recipe dictionaries with 'title' and 'ingredients' keys
+            top_n: Number of top recipes to return (default 5)
+            
+        Returns:
+            List of top N recipes ranked by Gemini
         """
         try:
-            prompt = f"""Based on these available ingredients:
+            # Limit recipes to first 20 to avoid token limits
+            recipes_subset = recipes[:20] if len(recipes) > 20 else recipes
+            
+            # Format recipes for prompt
+            recipe_list = []
+            for i, recipe in enumerate(recipes_subset):
+                title = recipe.get('title', 'Untitled')
+                recipe_ingredients = recipe.get('ingredients', [])
+                ingredients_str = ', '.join(recipe_ingredients[:10])  # Limit to 10 ingredients shown
+                recipe_list.append(f"{i}. {title}\n   Ingredients: {ingredients_str}")
+            
+            recipes_formatted = '\n\n'.join(recipe_list)
+            
+            # Create prompt for Gemini
+            prompt = f"""Given these available ingredients: {', '.join(ingredients)}
 
-{ingredient_analysis}
+And these recipe options:
+{recipes_formatted}
 
-Generate 5 diverse, practical recipe ideas. Each recipe should:
-- Use SOME or ALL of the listed ingredients (don't need to use everything)
-- Consider the quantities and quality mentioned
-- Include common pantry staples if needed
-- Be distinct from other recipes
-- Include clear cooking steps
+Analyze each recipe and return ONLY a JSON array of the indices (0-based) of the top {top_n} recipes that:
+1. Use the most available ingredients
+2. Are most practical and appealing
+3. Have good variety
 
-Return ONLY a JSON array with exactly 5 recipes:
-[
-  {{
-    "title": "Recipe Name 1",
-    "ingredients": ["ingredient1", "ingredient2"],
-    "steps": ["Step 1 instruction", "Step 2 instruction", "Step 3 instruction"]
-  }},
-  {{
-    "title": "Recipe Name 2",
-    "ingredients": ["ingredient3", "ingredient4"],
-    "steps": ["Step 1", "Step 2"]
-  }}
-]
-
-Each recipe must have 3-6 steps. No explanations, just the JSON array."""
+Return ONLY the JSON array of indices, no other text. Example: [0, 3, 5, 7, 9]"""
 
             response = self.model.generate_content(prompt)
-            response_text = response.text.strip()
             
-            # Try to extract JSON from response (handle markdown code blocks)
-            if "```json" in response_text:
-                start = response_text.find("```json") + 7
-                end = response_text.find("```", start)
-                response_text = response_text[start:end].strip()
-            elif "```" in response_text:
-                start = response_text.find("```") + 3
-                end = response_text.find("```", start)
-                response_text = response_text[start:end].strip()
+            # Parse the indices
+            top_indices = json.loads(response.text.strip())
             
-            # Try to find JSON array
-            if not response_text.startswith("["):
-                start = response_text.find("[")
-                end = response_text.rfind("]")
-                if start != -1 and end != -1:
-                    response_text = response_text[start:end+1]
+            # Return the filtered recipes
+            filtered = []
+            for i in top_indices:
+                if i < len(recipes_subset):
+                    filtered.append(recipes_subset[i])
+                if len(filtered) >= top_n:
+                    break
             
-            try:
-                recipes = json.loads(response_text)
-                if isinstance(recipes, list) and len(recipes) > 0:
-                    return recipes[:5]
-            except json.JSONDecodeError as e:
-                print(f"JSON parse error: {e}")
-                print(f"Raw response: {response.text[:500]}")
+            return filtered
             
-            # Fallback
-            return [{"title": "Recipe suggestions available", "ingredients": ["See analysis for details"], "steps": ["Unable to generate steps"]}]
         except Exception as e:
-            return [{"title": f"Error: {str(e)}", "ingredients": [], "steps": []}]
-    
+            # Fallback: return first top_n recipes if filtering fails
+            print(f"Recipe filtering error: {e}. Returning first {top_n} recipes.")
+            return recipes[:top_n]
+
     def run(self):
         """Run the analyzer with interactive mode or default behavior."""
         print("Ingredient Analyzer initialized and ready to analyze!")

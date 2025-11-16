@@ -10,6 +10,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 from analyzer import IngredientAnalyzer
+from i_to_rec3 import load_recipes_from_kaggle, find_valid_recipes
 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -47,8 +48,8 @@ def analyze():
             image_path = os.path.join(UPLOAD_DIR, unique_name)
             image.save(image_path)
 
-        # Call the analyzer (it expects an image_path and/or prompt)
-        result = analyzer.analyze(image_path=image_path, prompt=prompt)
+        # Call the analyzer (now returns a list of ingredients)
+        ingredients_list = analyzer.analyze(image_path=image_path, prompt=prompt)
 
         # Remove the temporary file after analysis to avoid storage buildup
         if image_path and os.path.exists(image_path):
@@ -58,7 +59,7 @@ def analyze():
                 # Don't fail the request if cleanup fails
                 pass
 
-        return jsonify({"success": True, "data": result})
+        return jsonify({"success": True, "ingredients": ingredients_list})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -71,22 +72,47 @@ def analyze():
 @app.route('/get_recipes', methods=['POST'])
 def get_recipes():
     """
-    Generate recipes from stored ingredient analysis.
+    Get recipes based on stored ingredients list.
+    Calls the recipe generation function from i-to-rec3.py
     """
     try:
-        data = request.get_json() or {}
-        ingredient_analysis = data.get('ingredient_analysis', '')
+        # Get the stored ingredients from the analyzer
+        ingredients = analyzer.get_stored_ingredients()
         
-        if not ingredient_analysis:
-            return jsonify({"success": False, "error": "No ingredient analysis provided"}), 400
+        if not ingredients:
+            return jsonify({"success": False, "error": "No ingredients found. Please analyze ingredients first."}), 400
         
-        recipes = analyzer.generate_recipes(ingredient_analysis)
+        # Load recipes from Kaggle
+        print("Loading recipes from Kaggle...")
+        df = load_recipes_from_kaggle()
+        
+        # Find valid recipes based on ingredients
+        print(f"Finding recipes matching {len(ingredients)} ingredients...")
+        valid_recipes = find_valid_recipes(df, ingredients)
+        
+        if not valid_recipes:
+            return jsonify({
+                "success": True,
+                "ingredients": ingredients,
+                "recipes": [],
+                "total_found": 0,
+                "message": "No recipes found matching your ingredients."
+            })
+        
+        print(f"Found {len(valid_recipes)} matching recipes. Filtering to top 5...")
+        
+        # Use Gemini to filter top 5 recipes
+        top_recipes = analyzer.filter_top_recipes(ingredients, valid_recipes, top_n=5)
         
         return jsonify({
             "success": True,
-            "recipes": recipes
+            "ingredients": ingredients,
+            "recipes": top_recipes,
+            "total_found": len(valid_recipes)
         })
+        
     except Exception as e:
+        print(f"Error in get_recipes: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
