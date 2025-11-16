@@ -19,7 +19,7 @@ app = Flask(__name__)
 CORS(app, resources={
     r"/api/*": {
         "origins": [
-            "https://calmoney11.github.io",  # Replace with your actual GitHub Pages URL
+            "https://calmoney11.github.io/Ingredient-Analyzer/",  # Replace with your actual GitHub Pages URL
             "http://localhost:*",  # For local testing
             "http://127.0.0.1:*"
         ]
