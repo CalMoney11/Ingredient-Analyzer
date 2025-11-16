@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Recipe Generator</title>
-    <!-- Load Tailwind CSS CDN -->
-    <script src="script.js"></script>
     <!-- Link to custom styles -->
     <link rel="stylesheet" href="styles.css">
     <script>
@@ -21,7 +19,17 @@
 <body>
     <div class="container">
         <header class="text-center mb-10">
-            <button id="color_button">  </button>
+            
+            <button id="theme-toggle" class="theme-toggle-btn" type="button">
+                <img
+                    id="theme-icon"
+                    class="icon"
+                    src="moon.png"
+                    alt="Toggle dark mode"
+                />
+                <span id="theme-label">Dark mode</span>
+            </button>
+
             <h1 class="titleQuestion">
                 What's for Dinner?
             </h1>
@@ -38,7 +46,7 @@
 
             <!-- Image Input Section -->
             <div class="mb-6">
-                <label class="block text-sm font-medium text-gray-700 mb-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2" id="instructions">
                     Upload a photo of your fridge/pantry or take a new one:
                 </label>
                 <div class="file-input-wrapper">
@@ -56,14 +64,14 @@
             <!-- Text Prompt Section -->
             <div class="mb-8">
                 <label for="foodPrompt" class="block text-sm font-medium text-gray-700 mb-2">
-                    Or, type what food/ingredients you have:
+                    Alternatively, input ingredients here:
                 </label>
                 <input type="text" id="foodPrompt" placeholder="e.g., chicken, tomatoes, pasta, quick dinner, vegetarian"
                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-700">
             </div>
 
             <!-- Action Button -->
-            <div class="text-center">
+            <div class="text-center" style=" margin-top: 30px;">
                 <button onclick="getRecipes()" id="recipeButton"
                         class="btn-primary w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
                     <span id="buttonText">Get Recipes</span>

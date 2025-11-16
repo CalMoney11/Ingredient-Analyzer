@@ -244,3 +244,51 @@ function displaySources(sources) {
         </div>
     `);
 }
+
+// ===============================
+// Dark / Light Mode Toggle
+// ===============================
+document.addEventListener("DOMContentLoaded", () => {
+    const root = document.documentElement;
+    const toggleBtn = document.getElementById("theme-toggle");
+    const themeIcon = document.getElementById("theme-icon"); // <img>
+    const themeLabel = document.getElementById("theme-label");
+  
+    // Safety check in case elements are missing
+    if (!toggleBtn || !themeIcon || !themeLabel) return;
+  
+    // Read theme from localStorage or system preference
+    const userStoredTheme = localStorage.getItem("theme");
+    const systemPrefersDark =
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+  
+    let currentTheme = userStoredTheme || (systemPrefersDark ? "dark" : "light");
+  
+    function applyTheme(theme) {
+      root.setAttribute("data-theme", theme);
+      localStorage.setItem("theme", theme);
+      currentTheme = theme;
+  
+      if (theme === "dark") {
+        // User is currently in DARK mode, so show sun to indicate switch to light
+        themeIcon.src = "images/sun.png"; // <-- update path if needed
+        themeIcon.alt = "Switch to light mode";
+        themeLabel.textContent = "Light mode";
+      } else {
+        // User is currently in LIGHT mode, so show moon to indicate switch to dark
+        themeIcon.src = "images/moon.png"; // <-- update path if needed
+        themeIcon.alt = "Switch to dark mode";
+        themeLabel.textContent = "Dark mode";
+      }
+    }
+  
+    // Apply theme on load
+    applyTheme(currentTheme);
+  
+    // Toggle theme on button click
+    toggleBtn.addEventListener("click", () => {
+      const newTheme = currentTheme === "dark" ? "light" : "dark";
+      applyTheme(newTheme);
+    });
+  });
