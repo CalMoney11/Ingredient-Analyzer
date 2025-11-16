@@ -3,10 +3,9 @@
 // ======================================================
 
 // PRODUCTION backend
-const BASE_CLOUD_RUN_URL = "https://ai-recipe-analyzer-backend-916947363444.us-central1.run.app";
-
-const API_URL = `${BASE_CLOUD_RUN_URL}/analyze`;
-const RECIPES_URL = `${BASE_CLOUD_RUN_URL}/get_recipes`;
+const API_BASE_PATH = "/api"; 
+const API_URL = `${API_BASE_PATH}/analyze`;
+const RECIPES_URL = `${API_BASE_PATH}/get_recipes`;
 
 // LOCAL TESTING
 // const API_URL = "http://localhost:5000/analyze";
