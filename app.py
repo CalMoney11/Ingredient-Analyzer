@@ -136,6 +136,30 @@ def api_analyze():
 def api_get_recipes():
     return get_recipes()
 
+@app.route('/generate_recipes', methods=['POST'])
+@app.route('/api/generate_recipes', methods=['POST'])
+def generate_recipes():
+    """Generate AI recipes based on stored ingredients using Gemini."""
+    try:
+        ingredients = analyzer.get_stored_ingredients()
+        if not ingredients:
+            return jsonify({"success": False, "error": "No ingredients available. Analyze an image or prompt first."}), 400
+        recipes = analyzer.generate_recipes(ingredients, count=5)
+        if not recipes:
+            return jsonify({
+                "success": False,
+                "error": "Recipe generation failed after retries.",
+                "error_type": "generation_failed"
+            }), 500
+        return jsonify({
+            "success": True,
+            "ingredients": ingredients,
+            "recipes": recipes,
+            "count": len(recipes)
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Unexpected error generating recipes: {e}", "error_type": "exception"}), 500
+
 
 if __name__ == "__main__":
     # Run dev server: use the venv python and run `python app.py`.

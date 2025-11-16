@@ -204,6 +204,74 @@ Return ONLY the JSON array of indices, no other text. Example: [0, 3, 5, 7, 9]""
             print(f"Recipe filtering error: {e}. Returning first {top_n} recipes.")
             return recipes[:top_n]
 
+    def generate_recipes(self, ingredients: list, count: int = 5) -> list:
+        """Generate recipes using Gemini given the detected ingredients.
+
+        Returns a list of recipe dicts: { name: str, ingredients: [str], steps: [str] }.
+        """
+        if not ingredients:
+            return []
+        try:
+            base_prompt = (
+                "You are a recipe generator. Using SOME OR ALL of these ingredients: "
+                f"{', '.join(ingredients)}. Create {count} distinct recipes. "
+                "RETURN STRICT JSON ONLY: an array of objects, each with keys: name (string), ingredients (array of ingredient strings), steps (array of short imperative step strings). Example: \n"
+                "[ {\"name\": \"Tomato Basil Pasta\", \"ingredients\": [\"tomato\", \"basil\", \"olive oil\"], \"steps\": [\"Boil pasta\", \"Saute tomatoes\"] } ] \n"
+                "NO markdown, NO commentary, NO code fences, NO numbering outside JSON."
+            )
+
+            attempt_raw_texts = []
+            for attempt in range(2):
+                prompt = base_prompt if attempt == 0 else (
+                    base_prompt + "\nRETRY STRICTLY: Output ONLY valid JSON array as previously defined." )
+                response = self.model.generate_content(prompt)
+                raw = getattr(response, 'text', '')
+                raw = raw.strip()
+                attempt_raw_texts.append(raw[:400])
+                try:
+                    data = json.loads(raw)
+                    if isinstance(data, list):
+                        cleaned = []
+                        for r in data[:count]:
+                            if not isinstance(r, dict):
+                                continue
+                            name = str(r.get('name', 'Untitled Recipe')).strip()
+                            ing_list = [str(i).strip() for i in r.get('ingredients', []) if str(i).strip()]
+                            steps_list = [str(s).strip() for s in r.get('steps', []) if str(s).strip()]
+                            if not name or (not ing_list and not steps_list):
+                                continue
+                            cleaned.append({
+                                'name': name,
+                                'ingredients': ing_list,
+                                'steps': steps_list
+                            })
+                        if cleaned:
+                            return cleaned
+                except json.JSONDecodeError:
+                    print(f"Recipe JSON parse failed attempt {attempt+1}. Raw snippet: {raw[:300]}")
+                    continue
+
+            # Fallback synthetic recipes if model responses unusable
+            print("Falling back to synthetic recipes.")
+            fallback = []
+            base_ing = ingredients[:10]  # limit for readability
+            for i in range(count):
+                subset = base_ing[i::count] or base_ing  # simple distribution
+                fallback.append({
+                    'name': f'Simple Dish {i+1}',
+                    'ingredients': subset,
+                    'steps': [
+                        'Combine available ingredients',
+                        'Season to taste',
+                        'Cook appropriately (bake/saute/boil)',
+                        'Plate and serve'
+                    ]
+                })
+            return fallback
+        except Exception as e:
+            print(f"Gemini recipe generation error: {e}")
+            return []
+
     def run(self):
         """Run the analyzer with interactive mode or default behavior."""
         print("Ingredient Analyzer initialized and ready to analyze!")

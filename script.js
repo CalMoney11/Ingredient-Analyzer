@@ -119,9 +119,16 @@ async function getRecipes() {
                 <div class="space-y-4">
                     <h3 class="text-xl font-semibold text-gray-800">Detected Ingredients (${ingredientsList.length}):</h3>
                     <ul class="space-y-2">${ingredientsHTML}</ul>
-                    <p class="text-sm text-gray-500">Image analyzed by Gemini. Recipes lookup disabled in this mode.</p>
+                    <button id="genRecipesButton" class="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">Generate AI Recipes</button>
+                    <p class="text-xs text-gray-400">Image analyzed by Gemini. Click to generate 5 recipe ideas.</p>
                 </div>
             `;
+
+            // Attach handler for generating recipes
+            const genBtn = document.getElementById('genRecipesButton');
+            if (genBtn) {
+                genBtn.onclick = () => generateAiRecipes();
+            }
         } else {
             throw new Error(result.error || 'Backend returned invalid format');
         }
@@ -226,3 +233,48 @@ document.addEventListener("DOMContentLoaded", () => {
       applyTheme(newTheme);
     });
   });
+
+// --- AI Recipe Generation ---
+async function generateAiRecipes() {
+    const outputDiv = document.getElementById('recipeContent');
+    outputDiv.insertAdjacentHTML('beforeend', '<p id="recipeLoading" class="text-blue-600 mt-2">Generating recipes...</p>');
+    try {
+        const resp = await fetch(`${API_URL.replace('/analyze','')}/generate_recipes`, { method: 'POST' });
+        if (!resp.ok) {
+            const errData = await resp.json().catch(()=>({}));
+            const msg = errData.error || `HTTP ${resp.status}`;
+            const type = errData.error_type || 'unknown';
+            throw new Error(`${msg} (${type})`);
+        }
+        const data = await resp.json();
+        if (!data.success || !Array.isArray(data.recipes)) {
+            throw new Error(data.error || 'Bad recipe response');
+        }
+        const recipesHTML = data.recipes.map(r => {
+            const ing = (r.ingredients||[]).map(i=>`<li class='text-sm'>• ${i}</li>`).join('');
+            const steps = (r.steps||[]).map((s,idx)=>`<li class='text-sm'>${idx+1}. ${s}</li>`).join('');
+            return `
+                <div class='border border-gray-200 rounded-lg p-4 bg-white shadow-sm'>
+                    <h4 class='text-lg font-semibold text-green-700 mb-2'>${r.name}</h4>
+                    <h5 class='font-medium text-gray-700'>Ingredients:</h5>
+                    <ul class='mb-3 space-y-1'>${ing}</ul>
+                    <h5 class='font-medium text-gray-700'>Steps:</h5>
+                    <ol class='list-decimal ml-5 space-y-1'>${steps}</ol>
+                </div>
+            `;
+        }).join('');
+        const existing = document.getElementById('aiRecipesBlock');
+        if (existing) existing.remove();
+        outputDiv.insertAdjacentHTML('beforeend', `
+            <div id='aiRecipesBlock' class='mt-6 space-y-4'>
+                <h3 class='text-xl font-semibold text-gray-800'>AI Generated Recipes (${data.recipes.length}):</h3>
+                ${recipesHTML}
+            </div>
+        `);
+    } catch (err) {
+        outputDiv.insertAdjacentHTML('beforeend', `<p class='text-red-600 mt-2'>Recipe generation error: ${err.message}</p>`);
+    } finally {
+        const loadEl = document.getElementById('recipeLoading');
+        if (loadEl) loadEl.remove();
+    }
+}
