@@ -1,6 +1,7 @@
 // --- Configuration ---
 // PRODUCTION: Your Vercel backend URL
-const API_URL = 'https://ingredient-analyzer-beta.vercel.app/api/analyze';
+const API_URL = 'https://recipe-backend-theta.vercel.app/api/analyze';
+const RECIPES_URL = 'https://recipe-backend-theta.vercel.app/api/get_recipes';
 // LOCAL TESTING: Uncomment the line below when testing locally
 // const API_URL = 'http://localhost:5000/analyze';
 
@@ -132,10 +133,9 @@ async function getRecipes() {
             
             // Now get recipes using those ingredients
             buttonText.innerHTML = 'Finding Recipes <span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>';
-            
-            const recipesUrl = 'http://localhost:5000/get_recipes';
+
             const recipesResponse = await withExponentialBackoff(() =>
-                fetch(recipesUrl, {
+                fetch(RECIPES_URL, {  
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
