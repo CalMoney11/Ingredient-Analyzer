@@ -1,5 +1,8 @@
 // --- Configuration ---
-const API_URL = 'YOUR_BACKEND_URL_HERE/analyze'; // Change this to your actual backend
+// PRODUCTION: Replace with your actual Vercel URL after deployment
+const API_URL = 'https://your-vercel-app.vercel.app/api/analyze';
+// LOCAL TESTING: Uncomment the line below when testing locally
+// const API_URL = 'http://localhost:5000/analyze';
 
 // --- Helper Functions ---
 
@@ -46,6 +49,19 @@ function simpleMarkdownToHtml(text) {
         .join('\n');
 }
 
+// Exponential backoff helper (optional, for rate limiting)
+async function withExponentialBackoff(fn, maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            return await fn();
+        } catch (error) {
+            if (i === maxRetries - 1) throw error;
+            const delay = Math.pow(2, i) * 1000;
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+}
+
 // --- Main Function ---
 
 async function getRecipes() {
@@ -67,7 +83,7 @@ async function getRecipes() {
     buttonText.innerHTML = 'Analyzing<span class="loading-dot">.</span><span class="loading-dot">.</span><span class="loading-dot">.</span>';
     outputDiv.innerHTML = '<div class="text-center py-8"><p class="text-lg text-blue-600">🔍 Analyzing ingredients...</p></div>';
 
-    // 2. Prepare FormData for the Flask backend
+    // Prepare FormData for the backend
     const formData = new FormData();
     if (imageFile) {
         formData.append('image', imageFile);
@@ -76,25 +92,25 @@ async function getRecipes() {
         formData.append('prompt', prompt);
     }
 
-    // 3. Determine the API endpoint (local for dev, deployed URL for production)
-    // For LOCAL TESTING: use http://localhost:5000/analyze
-    // For PRODUCTION: change to your deployed URL (e.g., https://your-app.onrender.com/analyze)
-    const apiUrl = 'http://localhost:5000/analyze';
-
     try {
-        // --- Fetch from Flask Backend ---
-        const response = await withExponentialBackoff(() =>
-            fetch(apiUrl, {
-                method: 'POST',
-                body: formData
-            })
-        );
+        // Fetch from Vercel backend
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            body: formData
+            // Note: Don't set Content-Type header - browser will set it automatically with boundary
+        });
 
         if (!response.ok) {
-            throw new Error(`Server error: ${response.status} ${response.statusText}`);
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Server error: ${response.status} ${response.statusText}`);
         }
 
         const result = await response.json();
+
+        // Check for success
+        if (!result.success) {
+            throw new Error(result.error || 'Analysis failed');
+        }
 
         // Extract analysis text
         const analysis = result.data?.prompt_analysis?.analysis 
@@ -107,9 +123,15 @@ async function getRecipes() {
     } catch (error) {
         console.error('Analysis error:', error);
         outputDiv.innerHTML = `
-            <div class="text-red-600">
-                <p class="font-medium">❌ Error: ${error.message}</p>
-                <p class="text-sm mt-2">Make sure your backend is running and the API_URL is correct.</p>
+            <div class="text-red-600 p-4 bg-red-50 rounded-lg">
+                <p class="font-medium mb-2">❌ Error: ${error.message}</p>
+                <p class="text-sm">Troubleshooting tips:</p>
+                <ul class="text-sm list-disc ml-4 mt-1">
+                    <li>Make sure your Vercel backend is deployed</li>
+                    <li>Check that API_URL points to the correct endpoint</li>
+                    <li>Verify CORS is configured correctly in your backend</li>
+                    <li>Check browser console for detailed error messages</li>
+                </ul>
             </div>
         `;
     } finally {
@@ -118,3 +140,16 @@ async function getRecipes() {
         buttonText.textContent = 'Get Recipes';
     }
 }
+
+// Optional: Test API connection on page load
+window.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const healthUrl = API_URL.replace('/analyze', '/health');
+        const response = await fetch(healthUrl);
+        if (response.ok) {
+            console.log('✅ Backend API is reachable');
+        }
+    } catch (error) {
+        console.warn('⚠️ Could not reach backend API:', error.message);
+    }
+});
